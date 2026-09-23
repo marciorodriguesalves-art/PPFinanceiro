@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ app_name }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.3/chart.umd.min.js"></script>
+</head>
+<body>
+  <!-- Login -->
+  <section id="login">
+    <form class="login-card" id="loginForm">
+      <h1>{{ app_name }}</h1>
+      <p>Controle suas contas, metas e investimentos.</p>
+      <label for="email">E-mail</label>
+      <input id="email" type="email" autocomplete="username" value="admin@orcamento.com.br" required />
+      <label for="password">Senha</label>
+      <input id="password" type="password" autocomplete="current-password" value="admin123" required />
+      <button class="btn" type="submit" style="width:100%;margin-top:18px">Entrar</button>
+      <p id="loginErr" class="muted" style="color:var(--red);margin-top:12px"></p>
+    </form>
+  </section>
+
+  <!-- App -->
+  <section id="app" class="hidden">
+    <aside class="sidebar">
+      <div class="brand">{{ app_name }}<small>MVP orçamentário</small></div>
+      <button class="nav-item" data-view="dashboard">📊 Dashboard</button>
+      <button class="nav-item" data-view="monthly">📅 Extrato mensal</button>
+      <div class="nav-sep">Lançamentos</div>
+      <button class="nav-item" data-view="daily">🧾 Gastos diários</button>
+      <button class="nav-item" data-view="fixed">📌 Despesas fixas</button>
+      <button class="nav-item" data-view="installments">💳 Parcelas do cartão</button>
+      <button class="nav-item" data-view="incomes">💰 Receitas</button>
+      <div class="nav-sep">Configuração</div>
+      <button class="nav-item" data-view="goals">🎯 Metas</button>
+      <button class="nav-item" data-view="categories">🏷️ Categorias</button>
+      <button class="nav-item" data-view="imports">📥 Importar</button>
+      <button class="nav-item" data-view="users" id="navUsers">👥 Usuários</button>
+      <div class="sidebar-foot">
+        <div id="whoami"></div>
+        <button class="nav-item" id="logout" style="margin-top:8px">↩ Sair</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="topbar">
+        <h2 id="viewTitle">Dashboard</h2>
+        <div class="period" id="periodBox">
+          <select id="selMonth"></select>
+          <select id="selYear"></select>
+        </div>
+      </div>
+      <div id="view"></div>
+    </main>
+  </section>
+
+  <div id="modalRoot"></div>
+  <div id="toastRoot"></div>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
