@@ -12,7 +12,10 @@ const State = {
 };
 
 const MONTHS = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
-const PALETTE = ["#2563eb","#16a34a","#d97706","#dc2626","#7c3aed","#0891b2","#db2777","#65a30d","#ea580c","#0d9488","#4f46e5","#a16207"];
+const PALETTE = ["#1466b8","#16b6cf","#0f4f90","#e4483b","#7c3aed","#0891b2","#db2777","#1a9e63","#ea580c","#0d9488","#4f46e5","#a16207"];
+const CY = "#e4483b";      // ano atual (linha de destaque)
+const PY = "#2f7fc0";      // ano anterior
+const ACCENT = "#16b6cf";  // teal
 
 /* ---------- utils ---------- */
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -97,7 +100,9 @@ async function go(view) {
   State.view = view;
   document.querySelectorAll(".nav-item[data-view]").forEach(b => b.classList.toggle("active", b.dataset.view === view));
   $("#viewTitle").textContent = TITLES[view] || view;
-  $("#periodBox").style.display = ["categories", "users", "imports"].includes(view) ? "none" : "flex";
+  const scoped = !["categories", "users", "imports"].includes(view);
+  $("#periodBox").style.display = scoped ? "flex" : "none";
+  $("#viewSub").textContent = scoped ? `Competência ${MONTHS[State.month - 1]}/${State.year}` : "";
   const host = $("#view");
   host.innerHTML = '<div class="empty">Carregando…</div>';
   try {
@@ -121,63 +126,181 @@ function chart(id, cfg) {
 const VIEWS = {};
 
 /* ----- Dashboard ----- */
+const TREND_METRICS = {
+  gastos: { label: "Gastos", good: "down" },
+  receita: { label: "Receita", good: "up" },
+  saldo: { label: "Saldo", good: "up" },
+  investimento: { label: "Investimento", good: "up" },
+};
+
 VIEWS.dashboard = async (host) => {
-  const [ov, ser] = await Promise.all([
+  const [ov, serCY, serPY] = await Promise.all([
     api(`/dashboard/overview/${State.year}/${State.month}`),
     api(`/dashboard/series/${State.year}`),
+    api(`/dashboard/series/${State.year - 1}`).catch(() => ({ pontos: [] })),
   ]);
   const k = ov.kpis;
+  const m = State.month;
+  // ponto do mês atual e do mês anterior (Dez do ano anterior quando m === 1)
+  const cur = serCY.pontos[m - 1] || {};
+  const prev = m >= 2 ? serCY.pontos[m - 2] : (serPY.pontos[11] || null);
+
   const invBadge = k.atende_meta_investimento ? '<span class="badge ok">Meta atingida</span>' : '<span class="badge bad">Abaixo da meta</span>';
+  const invPctMeta = k.investimento_meta > 0 ? k.investimento_previsto / k.investimento_meta - 1 : null;
+
   host.innerHTML = `
     <div class="kpi-grid">
-      ${kpi("Receita líquida", brl(k.receita_liquida))}
-      ${kpi("Gastos do mês", brl(k.total_gastos), `${pct(k.taxa_comprometimento)} da renda`)}
-      ${kpi("Saldo disponível", brl(k.saldo_disponivel), null, k.saldo_disponivel >= 0 ? "pos" : "neg")}
-      ${kpi("Investimento previsto", brl(k.investimento_previsto), `Meta: ${brl(k.investimento_meta)} ${invBadge}`, k.atende_meta_investimento ? "pos" : "neg")}
+      ${kpiCard("Receita líquida", brl(k.receita_liquida), { accent: "accent",
+        deltas: [deltaChip("vs mês ant.", cur.receita, prev && prev.receita, "up")] })}
+      ${kpiCard("Gastos do mês", brl(k.total_gastos), {
+        deltas: [deltaChip("vs mês ant.", cur.gastos, prev && prev.gastos, "down"),
+                 `<span class="delta"><span class="cap">${pct(k.taxa_comprometimento)} da renda</span></span>`] })}
+      ${kpiCard("Saldo disponível", brl(k.saldo_disponivel), { accent: k.saldo_disponivel >= 0 ? "good" : "bad",
+        valueCls: k.saldo_disponivel >= 0 ? "pos" : "neg",
+        deltas: [deltaChip("vs mês ant.", cur.saldo, prev && prev.saldo, "up")] })}
+      ${kpiCard("Investimento previsto", brl(k.investimento_previsto), { accent: k.atende_meta_investimento ? "good" : "bad",
+        valueCls: k.atende_meta_investimento ? "pos" : "neg",
+        deltas: [deltaPct("vs meta", invPctMeta, "up")], sub: `Meta ${brl(k.investimento_meta)} ${invBadge}` })}
     </div>
+
     <div class="grid-3">
-      <div class="card"><h3>Evolução anual — ${State.year}</h3><canvas id="cSeries" height="120"></canvas></div>
-      <div class="card"><h3>Composição do mês</h3><canvas id="cComp" height="120"></canvas></div>
+      <div class="card">
+        <div class="chart-head">
+          <div>
+            <h3>Evolução mensal — ano atual vs anterior</h3>
+            <p class="card-sub">Comparativo ${State.year} (CY) × ${State.year - 1} (PY)</p>
+          </div>
+          <div class="seg" id="trendSeg">
+            ${Object.entries(TREND_METRICS).map(([kk, v], i) => `<button data-metric="${kk}" class="${i === 0 ? "active" : ""}">${v.label}</button>`).join("")}
+          </div>
+        </div>
+        <div class="legend" style="margin-bottom:6px">
+          <span><i class="dot cy"></i> ${State.year} (CY)</span>
+          <span><i class="dot py"></i> ${State.year - 1} (PY)</span>
+        </div>
+        <div class="chart-wrap"><canvas id="cSeries" height="240"></canvas></div>
+      </div>
+      <div class="card">
+        <h3>Composição dos gastos</h3>
+        <p class="card-sub">Fixos · Variáveis · Cartão</p>
+        <div class="chart-wrap"><canvas id="cComp" height="220"></canvas></div>
+      </div>
     </div>
+
+    <div class="card" style="margin-top:16px">
+      <h3>Eficiência &amp; comprometimento</h3>
+      <div class="stat-row" style="margin-top:14px">
+        ${statTile("Comprometimento", pct(k.taxa_comprometimento))}
+        ${statTile("Taxa de investimento", pct(k.taxa_investimento_prevista))}
+        ${statTile("Meta de investimento", pct(k.investimento_meta / (k.receita_liquida || 1)))}
+        ${statTile("Receita bruta", brl(k.receita_bruta))}
+        ${statTile("Gastos fixos", brl(k.total_fixos))}
+        ${statTile("Parcelas cartão", brl(k.total_parcelas))}
+      </div>
+    </div>
+
     <div class="grid-3" style="margin-top:16px">
-      <div class="card"><h3>Gastos por categoria</h3><canvas id="cCat" height="120"></canvas></div>
-      <div class="card"><h3>Plano de ação</h3><div id="planBox"></div></div>
+      <div class="card"><h3>Gastos por categoria</h3><p class="card-sub">Top 8 do mês</p><div class="chart-wrap"><canvas id="cCat" height="240"></canvas></div></div>
+      <div class="card"><h3>Plano de ação</h3><p class="card-sub">Ajustes priorizados</p><div id="planBox"></div></div>
     </div>`;
 
-  const p = ser.pontos;
-  chart("cSeries", {
-    type: "line",
-    data: {
-      labels: p.map(x => MONTHS[x.mes - 1]),
-      datasets: [
-        { label: "Receita", data: p.map(x => x.receita), borderColor: PALETTE[1], backgroundColor: "transparent", tension: .3 },
-        { label: "Gastos", data: p.map(x => x.gastos), borderColor: PALETTE[3], backgroundColor: "transparent", tension: .3 },
-        { label: "Saldo", data: p.map(x => x.saldo), borderColor: PALETTE[0], backgroundColor: "rgba(37,99,235,.08)", fill: true, tension: .3 },
-      ],
-    },
-    options: baseOpts(),
+  // ---- Trend CY vs PY (com toggle de métrica) ----
+  const labels = MONTHS;
+  const renderTrend = (metric) => {
+    const cy = Array.from({ length: 12 }, (_, i) => { const pt = serCY.pontos.find(x => x.mes === i + 1); return pt ? pt[metric] : null; });
+    const py = Array.from({ length: 12 }, (_, i) => { const pt = serPY.pontos.find(x => x.mes === i + 1); return pt ? pt[metric] : null; });
+    chart("cSeries", {
+      type: "line",
+      data: { labels, datasets: [
+        { label: `${State.year}`, data: cy, borderColor: CY, backgroundColor: "transparent", tension: .4, borderWidth: 3, pointRadius: 3, pointBackgroundColor: CY },
+        { label: `${State.year - 1}`, data: py, borderColor: PY, backgroundColor: "rgba(47,127,192,.10)", fill: true, tension: .4, borderWidth: 2.5, pointRadius: 3, pointBackgroundColor: PY },
+      ] },
+      options: baseOpts(),
+    });
+  };
+  renderTrend("gastos");
+  $("#trendSeg").querySelectorAll("button").forEach(b => b.onclick = () => {
+    $("#trendSeg").querySelectorAll("button").forEach(x => x.classList.toggle("active", x === b));
+    renderTrend(b.dataset.metric);
   });
+
+  // ---- Composição (donut) ----
   const comp = ov.composicao.filter(c => c.value > 0);
   chart("cComp", {
     type: "doughnut",
-    data: { labels: comp.map(c => c.label), datasets: [{ data: comp.map(c => c.value), backgroundColor: PALETTE.slice(0, comp.length) }] },
-    options: { plugins: { legend: { position: "bottom" } } },
+    data: { labels: comp.map(c => c.label), datasets: [{ data: comp.map(c => c.value), backgroundColor: [PALETTE[0], ACCENT, PALETTE[3]], borderWidth: 2, borderColor: "#fff" }] },
+    options: { responsive: true, maintainAspectRatio: false, cutout: "62%",
+      plugins: { legend: { position: "bottom", labels: { boxWidth: 10, boxHeight: 10, usePointStyle: true } },
+        tooltip: { callbacks: { label: c => `${c.label}: ${brl(c.raw)}` } } } },
   });
+
+  // ---- Gastos por categoria (barra horizontal) ----
   const cats = ov.gastos_por_categoria.slice(0, 8);
   chart("cCat", {
     type: "bar",
-    data: { labels: cats.map(c => c.category), datasets: [{ label: "Gasto", data: cats.map(c => c.amount), backgroundColor: PALETTE[0] }] },
-    options: { ...baseOpts(), indexAxis: "y", plugins: { legend: { display: false } } },
+    data: { labels: cats.map(c => c.category), datasets: [{ label: "Gasto", data: cats.map(c => c.amount), backgroundColor: PALETTE[0], borderRadius: 5, barThickness: 16 }] },
+    options: barYOpts(false),
   });
+
   $("#planBox").innerHTML = renderPlan(ov.plano_acao);
 };
 
+/* wrapper simples usado por outras telas (ex.: Extrato mensal) */
 function kpi(label, value, sub = null, cls = "") {
-  return `<div class="card kpi"><div class="label">${label}</div><div class="value ${cls}">${value}</div>${sub ? `<div class="sub">${sub}</div>` : ""}</div>`;
+  return kpiCard(label, value, { sub, valueCls: cls });
+}
+function kpiCard(label, value, { sub = null, deltas = [], accent = "", valueCls = "" } = {}) {
+  const chips = deltas.filter(Boolean).join("");
+  return `<div class="card kpi ${accent}">
+    <div class="label">${label}</div>
+    <div class="value ${valueCls}">${value}</div>
+    ${sub ? `<div class="sub">${sub}</div>` : ""}
+    ${chips ? `<div class="deltas">${chips}</div>` : ""}
+  </div>`;
+}
+function deltaChip(caption, current, previous, good = "up") {
+  if (current == null || previous == null || previous === 0) return `<span class="delta"><span class="cap">${caption} —</span></span>`;
+  const rate = (current - previous) / Math.abs(previous);
+  return deltaPct(caption, rate, good);
+}
+function deltaPct(caption, rate, good = "up") {
+  if (rate == null || !isFinite(rate)) return `<span class="delta"><span class="cap">${caption} —</span></span>`;
+  const up = rate >= 0;
+  const isGood = (good === "up") ? up : !up;
+  const arrow = up ? "▲" : "▼";
+  const sign = up ? "+" : "";
+  return `<span class="delta ${isGood ? "up" : "down"}">${arrow} <b>${sign}${(rate * 100).toFixed(1).replace(".", ",")}%</b> <span class="cap">${caption}</span></span>`;
+}
+function statTile(label, value) {
+  return `<div class="stat"><div class="s-label">${label}</div><div class="s-value">${value}</div></div>`;
 }
 function baseOpts() {
-  return { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom" } },
-    scales: { y: { ticks: { callback: v => "R$ " + v.toLocaleString("pt-BR") } } } };
+  return {
+    responsive: true, maintainAspectRatio: false,
+    interaction: { mode: "index", intersect: false },
+    plugins: {
+      legend: { display: false },
+      tooltip: { callbacks: { label: c => `${c.dataset.label}: ${brl(c.raw)}` } },
+    },
+    scales: {
+      x: { grid: { display: false }, ticks: { color: "#6b7a90" } },
+      y: { grid: { color: "#eef2f7" }, border: { display: false }, ticks: { color: "#6b7a90", callback: v => "R$ " + v.toLocaleString("pt-BR") } },
+    },
+  };
+}
+/* opções para barras HORIZONTAIS (eixo de valor = x; categorias no y) */
+function barYOpts(showLegend = false) {
+  return {
+    responsive: true, maintainAspectRatio: false, indexAxis: "y",
+    plugins: {
+      legend: showLegend ? { position: "bottom", labels: { boxWidth: 10, boxHeight: 10, usePointStyle: true } } : { display: false },
+      tooltip: { callbacks: { label: c => `${c.dataset.label ? c.dataset.label + ": " : ""}${brl(c.raw)}` } },
+    },
+    scales: {
+      x: { grid: { color: "#eef2f7" }, border: { display: false }, ticks: { color: "#6b7a90", callback: v => "R$ " + v.toLocaleString("pt-BR") } },
+      y: { grid: { display: false }, ticks: { color: "#6b7a90" } },
+    },
+  };
 }
 function renderPlan(plan) {
   let html = `<p style="font-size:13px;margin-top:0">${esc(plan.resumo)}</p>`;
@@ -232,11 +355,11 @@ VIEWS.monthly = async (host) => {
     data: {
       labels: cats.map(c => c.category),
       datasets: [
-        { label: "Gasto", data: cats.map(c => c.amount), backgroundColor: PALETTE[0] },
-        { label: "Meta", data: cats.map(c => c.target ?? 0), backgroundColor: "rgba(148,163,184,.5)" },
+        { label: "Gasto", data: cats.map(c => c.amount), backgroundColor: PALETTE[0], borderRadius: 4, barThickness: 12 },
+        { label: "Meta", data: cats.map(c => c.target ?? 0), backgroundColor: "rgba(148,163,184,.55)", borderRadius: 4, barThickness: 12 },
       ],
     },
-    options: { ...baseOpts(), indexAxis: "y" },
+    options: barYOpts(true),
   });
 
   bindPayToggles(y, m);

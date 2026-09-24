@@ -32,5 +32,5 @@ def health() -> dict:
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 def index(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
-        "index.html", {"request": request, "app_name": settings.app_name}
+        request, "index.html", {"app_name": settings.app_name}
     )

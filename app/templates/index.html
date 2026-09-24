@@ -7,14 +7,19 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/css/style.css" />
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.3/chart.umd.min.js"></script>
+  <script src="/static/vendor/chart.umd.min.js"></script>
 </head>
 <body>
   <!-- Login -->
   <section id="login">
     <form class="login-card" id="loginForm">
-      <h1>{{ app_name }}</h1>
-      <p>Controle suas contas, metas e investimentos.</p>
+      <div class="login-brand">
+        <div class="logo-mark">✓</div>
+        <div>
+          <h1>{{ app_name }}</h1>
+          <p style="margin:0">Controle suas contas, metas e investimentos.</p>
+        </div>
+      </div>
       <label for="email">E-mail</label>
       <input id="email" type="email" autocomplete="username" value="admin@orcamento.com.br" required />
       <label for="password">Senha</label>
@@ -27,7 +32,7 @@
   <!-- App -->
   <section id="app" class="hidden">
     <aside class="sidebar">
-      <div class="brand">{{ app_name }}<small>MVP orçamentário</small></div>
+      <div class="brand"><div class="logo-mark">✓</div><div>{{ app_name }}<small>MVP orçamentário</small></div></div>
       <button class="nav-item" data-view="dashboard">📊 Dashboard</button>
       <button class="nav-item" data-view="monthly">📅 Extrato mensal</button>
       <div class="nav-sep">Lançamentos</div>
@@ -48,7 +53,10 @@
 
     <main class="main">
       <div class="topbar">
-        <h2 id="viewTitle">Dashboard</h2>
+        <div>
+          <h2 id="viewTitle">Dashboard</h2>
+          <div class="sub" id="viewSub"></div>
+        </div>
         <div class="period" id="periodBox">
           <select id="selMonth"></select>
           <select id="selYear"></select>

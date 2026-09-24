@@ -129,6 +129,8 @@ e `tests/test_importers.py` e confirme que o `README.md` continua coerente.
 - **Nunca** mudar o significado das convenções de importação (sinal dos valores, "Parcela X/Y", `year=0/month=0` como meta padrão) sem atualizar testes e este documento.
 - **Nunca** commitar `.venv/`, caches (`.ruff_cache`, `.pytest_cache`, `__pycache__`) ou bancos locais (`*.db`, `*.sqlite3`).
 - **Nunca** dar merge com CI vermelho: `ruff check .` e `pytest` precisam passar (o CI roda os testes contra PostgreSQL).
+- **Nunca** reintroduzir dependência de CDN externo no front-end: o Chart.js é servido localmente em `app/static/vendor/`. Coerente com o ethos "sem chamadas externas" do sistema.
+- **Nunca** usar a ordem antiga de `TemplateResponse(name, context)`: use `templates.TemplateResponse(request, "index.html", {...})` (assinatura atual do Starlette).
 
 ## Camada comportamental (`app/comportamental/`)
 
