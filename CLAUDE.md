@@ -130,6 +130,33 @@ e `tests/test_importers.py` e confirme que o `README.md` continua coerente.
 - **Nunca** commitar `.venv/`, caches (`.ruff_cache`, `.pytest_cache`, `__pycache__`) ou bancos locais (`*.db`, `*.sqlite3`).
 - **Nunca** dar merge com CI vermelho: `ruff check .` e `pytest` precisam passar (o CI roda os testes contra PostgreSQL).
 
+## Camada comportamental (`app/comportamental/`)
+
+Camada **aditiva** de economia comportamental sobre o MVP: lê os lançamentos já
+existentes (receita, gastos variáveis, despesas fixas, parcelas) e produz um
+**diagnóstico** psicológico do mês — "por que se fura o orçamento" — além das
+caixinhas sazonais e do raio-x de recorrências.
+
+```
+app/comportamental/
+  engine.py      # MOTOR determinístico e PURO (sem ORM/FastAPI) — um detector por viés
+  constants.py   # todos os limiares calibráveis (thresholds)
+  services.py    # carregadores (banco -> DTO do motor) + regras de ambiente + persistência
+  models.py      # tabelas novas: ReservaSazonal, Recorrencia, Diagnostico(+Padrao/Ressalva)
+  schemas.py     # Pydantic v2
+  router.py      # rotas, montadas em /api/comportamental
+```
+
+Regras/convenções específicas:
+- O **motor (`engine.py`) é puro e determinístico**: recebe `list[LancamentoIn]` + contexto e devolve os 3–5 padrões mais relevantes (confiança alta primeiro, depois maior valor). Mesma regra do `budget.py`/`action_plan.py`: **sem I/O externo, sem inventar valor** — se falta dado, o detector não emite o achado (registra uma *ressalva*).
+- O acoplamento ao schema real fica **só em `services.py`** (`_carregar_lancamentos`, `_carregar_contexto`, `_carregar_historico`). Ao mudar modelos do MVP, ajuste ali.
+- Toda a camada opera em **`Decimal`** (não `float`) — o motor cuida de dinheiro; use o helper `_dec()` ao trazer valores do ORM.
+- Filtre sempre por `usuario_id` (mesma regra 13 do MVP). As tabelas são novas e não removem/alteram nada do schema existente.
+- Meios de pagamento do MVP são mapeados para o vocabulário do motor em `services._MEIO_PAGAMENTO` (`credito` → `cartao_credito`, que é o que "dilui a dor de pagar").
+- Detectores atuais (viés → gatilho): investimento (desconto hiperbólico), recorrencias (efeito posse), parcelamento (dor diluída), sazonais (otimismo), dor_pagar (cartão/microtransações), contabilidade_mental (entrada atípica → supérfluo), meta_variavel + inflacao_estilo_vida (lifestyle creep), impulso (autocontrole). Limiares em `constants.py`.
+
+Endpoints: `POST/GET /api/comportamental/diagnosticos[/{periodo}]`, `GET /api/comportamental/recorrencias/anualizado`, `POST /api/comportamental/recorrencias`, `POST/GET /api/comportamental/reservas`.
+
 ## Testes & CI
 
 - `tests/conftest.py` usa **SQLite in-memory** por padrão (rápido). Se `TEST_DATABASE_URL` estiver definido, os testes rodam nesse banco.
