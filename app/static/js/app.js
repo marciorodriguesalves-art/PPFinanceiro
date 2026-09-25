@@ -418,16 +418,35 @@ VIEWS.gastos = async (host) => {
       ${kpi("Projeção economia 12m", brl(rep.projecao_economia_12m))}
     </div>
 
-    <div class="grid-3col">
-      ${crudCard("secDaily", "🧾 Gastos diários", null, daily.length ? CFG_DAILY.table(daily) : EMPTY)}
+    <div class="grid-2">
       ${crudCard("secFixed", "📌 Despesas fixas", `Pagamento em ${MONTHS[m - 1]}/${y}`, tableFixedFull(fixed, y, m), "+ Nova")}
-      ${crudCard("secInst", "💳 Parcelas do cartão", "Ativas nesta competência", insts.length ? CFG_INST.table(insts) : EMPTY, "+ Nova")}
+      <div class="card"><h3>Despesas fixas — pago × pendente</h3><p class="card-sub">Quanto das contas fixas do mês já foi quitado</p><div class="chart-wrap sm"><canvas id="cFixStatus"></canvas></div></div>
     </div>
 
     <div class="grid-2" style="margin-top:16px">
-      <div class="card"><h3>Plano de ação</h3><p class="card-sub">Ajustes priorizados</p>${renderPlan(rep.plano_acao)}</div>
-      <div class="card"><h3>Desvios de meta</h3>${tableDeviations(rep.desvios)}</div>
-    </div>`;
+      ${crudCard("secDaily", "🧾 Gastos diários", null, daily.length ? CFG_DAILY.table(daily) : EMPTY)}
+      ${crudCard("secInst", "💳 Parcelas do cartão", "Ativas nesta competência", insts.length ? CFG_INST.table(insts) : EMPTY, "+ Nova")}
+    </div>
+
+    <div class="card" style="margin-top:16px"><h3>Desvios de meta</h3>${tableDeviations(rep.desvios)}</div>`;
+
+  // Donut: despesas fixas pagas × pendentes na competência.
+  const ativas = fixed.filter(r => r.active);
+  const pago = ativas.filter(r => r._pay && r._pay.paid)
+    .reduce((s, r) => s + Number(r._pay.amount_paid ?? r.amount), 0);
+  const pendente = ativas.filter(r => !(r._pay && r._pay.paid))
+    .reduce((s, r) => s + Number(r.amount), 0);
+  chart("cFixStatus", {
+    type: "doughnut",
+    data: { labels: ["Pago", "Pendente"], datasets: [{ data: [pago, pendente], backgroundColor: ["#1a9e63", "#d98a00"], borderWidth: 2, borderColor: "#fff" }] },
+    options: {
+      responsive: true, maintainAspectRatio: false, cutout: "62%",
+      plugins: {
+        legend: { position: "bottom", labels: { boxWidth: 10, boxHeight: 10, usePointStyle: true } },
+        tooltip: { callbacks: { label: c => `${c.label}: ${brl(c.raw)}` } },
+      },
+    },
+  });
 
   bindCrudSection("secDaily", CFG_DAILY, daily);
   bindCrudSection("secInst", CFG_INST, insts);
