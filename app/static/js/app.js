@@ -94,7 +94,7 @@ function bindNav() {
   $("#logout").onclick = logout;
 }
 
-const TITLES = { laudo: "Laudo comportamental", dashboard: "Dashboard", gastos: "Gastos", goals: "Metas de gasto", categories: "Categorias", imports: "Importar dados", users: "Usuários" };
+const TITLES = { laudo: "Laudo comportamental", dashboard: "Dashboard", gastos: "Gastos", incomes: "Receitas", goals: "Metas de gasto", categories: "Categorias", imports: "Importar dados", users: "Usuários" };
 
 async function go(view) {
   State.view = view;
@@ -200,7 +200,13 @@ VIEWS.dashboard = async (host) => {
     </div>
 
     <div class="grid-3" style="margin-top:16px">
-      <div class="card"><h3>Gastos por categoria</h3><p class="card-sub">Top 8 do mês</p><div class="chart-wrap"><canvas id="cCat" height="240"></canvas></div></div>
+      <div class="card">
+        <div class="chart-head">
+          <div><h3>Resumo por categoria</h3><p class="card-sub">Gasto × meta — barras em vermelho estouraram o teto</p></div>
+          <div class="legend"><span><i class="dot" style="background:var(--primary)"></i> No limite</span><span><i class="dot" style="background:var(--red)"></i> Acima da meta</span></div>
+        </div>
+        <div class="chart-wrap"><canvas id="cCat" height="240"></canvas></div>
+      </div>
       <div class="card"><h3>Plano de ação</h3><p class="card-sub">Ajustes priorizados</p><div id="planBox"></div></div>
     </div>`;
 
@@ -234,12 +240,30 @@ VIEWS.dashboard = async (host) => {
         tooltip: { callbacks: { label: c => `${c.label}: ${brl(c.raw)}` } } } },
   });
 
-  // ---- Gastos por categoria (barra horizontal) ----
-  const cats = ov.gastos_por_categoria.slice(0, 8);
+  // ---- Resumo por categoria (gasto × meta, com status de estouro) ----
+  const cats = ov.gastos_por_categoria.filter(c => c.amount > 0).slice(0, 8);
+  const gastoColor = cats.map(c => (c.target != null && c.amount > c.target) ? CY : PALETTE[0]);
+  const optCat = barYOpts(true);
+  optCat.plugins.tooltip.callbacks = {
+    label: c => `${c.dataset.label}: ${brl(c.raw)}`,
+    afterLabel: c => {
+      if (c.datasetIndex !== 0) return "";
+      const cat = cats[c.dataIndex];
+      if (cat.target == null) return "sem meta definida";
+      const d = cat.amount - cat.target;
+      return d > 0 ? `⚠ ${brl(d)} acima da meta` : `✔ ${brl(-d)} abaixo da meta`;
+    },
+  };
   chart("cCat", {
     type: "bar",
-    data: { labels: cats.map(c => c.category), datasets: [{ label: "Gasto", data: cats.map(c => c.amount), backgroundColor: PALETTE[0], borderRadius: 5, barThickness: 16 }] },
-    options: barYOpts(false),
+    data: {
+      labels: cats.map(c => c.category),
+      datasets: [
+        { label: "Gasto", data: cats.map(c => c.amount), backgroundColor: gastoColor, borderRadius: 5, barThickness: 13 },
+        { label: "Meta", data: cats.map(c => c.target), backgroundColor: "rgba(148,163,184,.45)", borderRadius: 5, barThickness: 13 },
+      ],
+    },
+    options: optCat,
   });
 
   $("#planBox").innerHTML = renderPlan(ov.plano_acao);
@@ -377,14 +401,14 @@ function laudoTile(value, label) {
 /* ----- Gastos (tela consolidada: receitas + diários + fixas + parcelas, editável) ----- */
 VIEWS.gastos = async (host) => {
   const y = State.year, m = State.month;
-  const [rep, incomes, fixed, daily, insts] = await Promise.all([
+  const [rep, fixed, daily, insts] = await Promise.all([
     api(`/reports/monthly/${y}/${m}`),
-    api(`/incomes?year=${y}&month=${m}`),
     fixedWithPayments(y, m),
     api(`/daily-expenses?year=${y}&month=${m}`),
     api(`/installments?active_year=${y}&active_month=${m}`),
   ]);
   const k = rep.kpis;
+  const EMPTY = '<div class="empty">Nenhum registro nesta competência.</div>';
   host.innerHTML = `
     <div class="kpi-grid">
       ${kpi("Receita líquida", brl(k.receita_liquida))}
@@ -393,37 +417,18 @@ VIEWS.gastos = async (host) => {
       ${kpi("Investimento", brl(k.investimento_previsto), `Meta ${brl(k.investimento_meta)}`, k.atende_meta_investimento ? "pos" : "neg")}
       ${kpi("Projeção economia 12m", brl(rep.projecao_economia_12m))}
     </div>
-    <div class="grid-2">
-      <div class="card"><h3>Resumo por categoria</h3><p class="card-sub">Gasto × meta</p><div class="chart-wrap sm"><canvas id="cMcat"></canvas></div></div>
+
+    <div class="grid-3col">
+      ${crudCard("secDaily", "🧾 Gastos diários", null, daily.length ? CFG_DAILY.table(daily) : EMPTY)}
+      ${crudCard("secFixed", "📌 Despesas fixas", `Pagamento em ${MONTHS[m - 1]}/${y}`, tableFixedFull(fixed, y, m), "+ Nova")}
+      ${crudCard("secInst", "💳 Parcelas do cartão", "Ativas nesta competência", insts.length ? CFG_INST.table(insts) : EMPTY, "+ Nova")}
+    </div>
+
+    <div class="grid-2" style="margin-top:16px">
       <div class="card"><h3>Plano de ação</h3><p class="card-sub">Ajustes priorizados</p>${renderPlan(rep.plano_acao)}</div>
-    </div>
+      <div class="card"><h3>Desvios de meta</h3>${tableDeviations(rep.desvios)}</div>
+    </div>`;
 
-    ${crudSection("secIncome", CFG_INCOME, incomes, "💰 Receitas", "Você pode ter várias receitas por mês")}
-    ${crudSection("secDaily", CFG_DAILY, daily, "🧾 Gastos diários", null)}
-
-    <div class="card" id="secFixed" style="margin-top:16px">
-      <div class="toolbar"><div><h3>📌 Despesas fixas</h3><p class="card-sub">Pagamento por competência (${MONTHS[m - 1]}/${y})</p></div><button class="btn addOne">+ Nova</button></div>
-      ${tableFixedFull(fixed, y, m)}
-    </div>
-
-    ${crudSection("secInst", CFG_INST, insts, "💳 Parcelas do cartão", "Ativas nesta competência")}
-
-    <div class="card" style="margin-top:16px"><h3>Desvios de meta</h3>${tableDeviations(rep.desvios)}</div>`;
-
-  const cats = rep.gastos_por_categoria.slice(0, 10);
-  chart("cMcat", {
-    type: "bar",
-    data: {
-      labels: cats.map(c => c.category),
-      datasets: [
-        { label: "Gasto", data: cats.map(c => c.amount), backgroundColor: PALETTE[0], borderRadius: 4, barThickness: 12 },
-        { label: "Meta", data: cats.map(c => c.target ?? 0), backgroundColor: "rgba(148,163,184,.55)", borderRadius: 4, barThickness: 12 },
-      ],
-    },
-    options: barYOpts(true),
-  });
-
-  bindCrudSection("secIncome", CFG_INCOME, incomes);
   bindCrudSection("secDaily", CFG_DAILY, daily);
   bindCrudSection("secInst", CFG_INST, insts);
   const secFixed = document.getElementById("secFixed");
@@ -432,6 +437,14 @@ VIEWS.gastos = async (host) => {
   secFixed.querySelectorAll(".delBtn").forEach(b => b.onclick = () => delRow(CFG_FIXED, +b.dataset.id));
   bindPayToggles(y, m);
 };
+
+/* Card de seção (tabela com rolagem horizontal) — usado no layout de 3 colunas */
+function crudCard(id, title, sub, inner, addLabel = "+ Novo") {
+  return `<div class="card gasto-col" id="${id}">
+    <div class="toolbar"><div><h3>${title}</h3>${sub ? `<p class="card-sub">${sub}</p>` : ""}</div><button class="btn sm addOne">${addLabel}</button></div>
+    <div class="tscroll">${inner}</div>
+  </div>`;
+}
 
 /* Seção CRUD reutilizável dentro da tela consolidada (card + toolbar + tabela) */
 function crudSection(id, cfg, rows, title, sub) {
@@ -636,6 +649,9 @@ const CFG_INCOME = {
     { name: "net_amount", label: "Valor líquido (R$)", type: "number", step: "0.01", min: 0, value: r?.net_amount },
   ],
 };
+
+/* Receitas: menu próprio (você pode ter várias por mês) */
+VIEWS.incomes = crudView(CFG_INCOME);
 
 const CFG_GOALS = {
   label: "Meta de gasto", endpoint: "/goals", periodScoped: false,

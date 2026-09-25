@@ -165,11 +165,13 @@ SPA vanilla JS + Chart.js. Telas (nav em [templates/index.html](app/templates/in
 - **Laudo comportamental** (primeiro item, acima do Dashboard) — `VIEWS.laudo`: renderiza o
   diagnóstico do motor comportamental no estilo do laudo em PDF (tiles, "para onde foi o
   dinheiro", padrões com selo de confiança, ressalvas).
-- **Dashboard** — KPIs com variação, tendência CY×PY, donut, categorias.
-- **Gastos** — `VIEWS.gastos`: **tela consolidada e editável** (Receitas, Gastos diários,
-  Despesas fixas, Parcelas) + KPIs + plano. Cada seção tem "+ Novo" que abre o form
+- **Dashboard** — KPIs com variação, tendência CY×PY, donut de composição e **Resumo por
+  categoria** (gasto × meta; barra em vermelho quando estoura o teto).
+- **Gastos** — `VIEWS.gastos`: KPIs + **Gastos diários, Despesas fixas e Parcelas lado a
+  lado** (`.grid-3col`) + Plano de ação + Desvios. Cada seção tem "+ Novo" que abre o form
   (`openForm`) e volta para cá ao salvar. Configs CRUD são consts (`CFG_DAILY`, `CFG_FIXED`,
-  `CFG_INST`, `CFG_INCOME`, `CFG_GOALS`) reusadas aqui.
+  `CFG_INST`, `CFG_INCOME`, `CFG_GOALS`).
+- **Receitas** — menu próprio (`VIEWS.incomes`, abaixo de Gastos); pode haver várias por mês.
 - **Metas** — `VIEWS.goals`: metas **sugeridas pelo diagnóstico** (editáveis, via
   `/api/comportamental/metas-sugeridas/{periodo}`) + CRUD de metas.
 - **Importar** — aceita **vários arquivos**; a competência de cada lançamento vem da **data
