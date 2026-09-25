@@ -70,6 +70,17 @@ def obter_diagnostico(
     )
 
 
+# --- Metas sugeridas a partir do diagnóstico -------------------------------
+@router.get("/metas-sugeridas/{periodo}")
+def metas_sugeridas(
+    periodo: str,
+    db: Session = Depends(get_db),
+    usuario_id: int = Depends(usuario_atual),
+):
+    """Tetos de gasto propostos por categoria (editáveis) com base no mês."""
+    return services.sugerir_metas(db, usuario_id, periodo)
+
+
 # --- Recorrências (raio-x) -------------------------------------------------
 @router.get("/recorrencias/anualizado")
 def recorrencias_anualizadas(

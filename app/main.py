@@ -1,3 +1,4 @@
+import time
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -10,6 +11,11 @@ from app.comportamental import comportamental_router
 from app.config import settings
 
 BASE_DIR = Path(__file__).resolve().parent
+
+# Token de cache para os assets estáticos. Muda a cada boot do processo — em dev
+# (uvicorn --reload) isso invalida o cache do navegador a cada edição; em produção
+# fica estável por deploy.
+ASSET_VERSION = int(time.time())
 
 app = FastAPI(
     title=settings.app_name,
@@ -32,5 +38,5 @@ def health() -> dict:
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 def index(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
-        request, "index.html", {"app_name": settings.app_name}
+        request, "index.html", {"app_name": settings.app_name, "asset_v": ASSET_VERSION}
     )

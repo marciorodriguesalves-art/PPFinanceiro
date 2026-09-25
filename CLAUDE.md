@@ -159,6 +159,25 @@ Regras/convenções específicas:
 
 Endpoints: `POST/GET /api/comportamental/diagnosticos[/{periodo}]`, `GET /api/comportamental/recorrencias/anualizado`, `POST /api/comportamental/recorrencias`, `POST/GET /api/comportamental/reservas`.
 
+## Front-end (SPA em `app/static/js/app.js`)
+
+SPA vanilla JS + Chart.js. Telas (nav em [templates/index.html](app/templates/index.html)):
+- **Laudo comportamental** (primeiro item, acima do Dashboard) — `VIEWS.laudo`: renderiza o
+  diagnóstico do motor comportamental no estilo do laudo em PDF (tiles, "para onde foi o
+  dinheiro", padrões com selo de confiança, ressalvas).
+- **Dashboard** — KPIs com variação, tendência CY×PY, donut, categorias.
+- **Gastos** — `VIEWS.gastos`: **tela consolidada e editável** (Receitas, Gastos diários,
+  Despesas fixas, Parcelas) + KPIs + plano. Cada seção tem "+ Novo" que abre o form
+  (`openForm`) e volta para cá ao salvar. Configs CRUD são consts (`CFG_DAILY`, `CFG_FIXED`,
+  `CFG_INST`, `CFG_INCOME`, `CFG_GOALS`) reusadas aqui.
+- **Metas** — `VIEWS.goals`: metas **sugeridas pelo diagnóstico** (editáveis, via
+  `/api/comportamental/metas-sugeridas/{periodo}`) + CRUD de metas.
+- **Importar** — aceita **vários arquivos**; a competência de cada lançamento vem da **data
+  da linha** no arquivo (multi-mês). Backend: [imports.py](app/api/routes/imports.py).
+
+Assets levam `?v={{ asset_v }}` (token que muda a cada boot do processo — busta cache do
+navegador em dev, estável por deploy em produção). Ver `ASSET_VERSION` em [main.py](app/main.py).
+
 ## Deploy (produção)
 
 **Alvo principal: Railway** (PaaS) — PostgreSQL gerenciado, HTTPS e deploy no push.

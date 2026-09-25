@@ -234,3 +234,39 @@ input:focus, select:focus, textarea:focus { outline: 2px solid #bcd7f2; border-c
 }
 .toast.err { background: var(--red); }
 .empty { color: var(--muted); text-align: center; padding: 34px; font-size: 13px; }
+
+/* ---------- Laudo comportamental ---------- */
+.laudo { display: flex; flex-direction: column; gap: 16px; }
+.laudo-head { background: linear-gradient(120deg, var(--navy), var(--primary-600)); color: #fff; border-radius: var(--radius); padding: 22px 24px; box-shadow: var(--shadow); }
+.laudo-eyebrow { font-size: 11px; letter-spacing: .18em; color: #a9c6e6; font-weight: 700; }
+.laudo-head h2 { margin: 6px 0 4px; font-size: 24px; color: #fff; }
+.laudo-meta { color: #c6d6ea; font-size: 12.5px; }
+.laudo-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; }
+.laudo-tile { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; box-shadow: var(--shadow); border-top: 3px solid var(--primary); }
+.laudo-tile .lt-val { font-size: 22px; font-weight: 700; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.laudo-tile .lt-lbl { color: var(--muted); font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em; font-weight: 600; margin-top: 4px; }
+.laudo-sec { margin: 6px 2px -4px; font-size: 16px; }
+
+.laudo-bars { display: flex; flex-direction: column; gap: 10px; margin-top: 6px; }
+.lbar { display: grid; grid-template-columns: 150px 1fr 170px; align-items: center; gap: 12px; }
+.lbar-name { font-size: 13px; }
+.lbar-track { background: var(--panel-2); border-radius: 999px; height: 12px; overflow: hidden; }
+.lbar-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--primary), var(--accent)); }
+.lbar-val { text-align: right; font-size: 13px; font-variant-numeric: tabular-nums; }
+@media (max-width: 620px) { .lbar { grid-template-columns: 1fr; gap: 3px; } .lbar-val { text-align: left; } }
+
+.laudo-pattern { background: var(--panel); border: 1px solid var(--border); border-left: 4px solid var(--muted); border-radius: var(--radius); padding: 16px 18px; box-shadow: var(--shadow); }
+.laudo-pattern.conf-alta { border-left-color: var(--primary); }
+.laudo-pattern.conf-media { border-left-color: var(--amber); }
+.laudo-pattern.conf-baixa { border-left-color: var(--muted); }
+.lp-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.lp-num { width: 24px; height: 24px; border-radius: 7px; background: var(--navy); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; flex: 0 0 auto; }
+.lp-title { font-weight: 700; font-size: 15px; }
+.conf-badge { margin-left: auto; font-size: 10px; font-weight: 700; letter-spacing: .06em; padding: 3px 9px; border-radius: 999px; }
+.conf-badge.conf-alta { background: #e0edfb; color: var(--primary-600); }
+.conf-badge.conf-media { background: var(--amber-soft); color: var(--amber); }
+.conf-badge.conf-baixa { background: var(--panel-2); color: var(--muted); }
+.laudo-pattern p { margin: 5px 0; font-size: 13px; line-height: 1.5; }
+.lp-rec { color: var(--primary-600); }
+.laudo-caveats ul { margin: 6px 0 0; padding-left: 18px; color: var(--muted); font-size: 12.5px; }
+.laudo-caveats li { margin: 4px 0; }

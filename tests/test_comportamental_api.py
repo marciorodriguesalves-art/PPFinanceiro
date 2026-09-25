@@ -118,6 +118,28 @@ def test_recorrencias_anualizado(client, admin_headers):
     assert float(body["total_anual"]) == 478.80  # 39.90 * 12
 
 
+def test_metas_sugeridas_corta_impulso(client, db, admin, admin_headers):
+    cat = Category(name="Lazer")  # categoria de impulso
+    db.add(cat)
+    db.flush()
+    db.add(
+        Income(user_id=admin.id, year=2026, month=8, gross_amount=13000, net_amount=10000)
+    )
+    db.add(
+        DailyExpense(
+            user_id=admin.id, category_id=cat.id, expense_date=date(2026, 8, 10),
+            description="Cinema", amount=100, payment_method=PaymentMethod.credito,
+        )
+    )
+    db.commit()
+
+    res = client.get("/api/comportamental/metas-sugeridas/2026-08", headers=admin_headers)
+    assert res.status_code == 200, res.text
+    lazer = next(s for s in res.json() if s["category"] == "Lazer")
+    assert lazer["impulso"] is True
+    assert lazer["sugerido"] == 80.0  # corte de 20% sobre 100
+
+
 def test_reservas_isolamento_por_usuario(client, admin_headers, user_headers):
     res = client.post(
         "/api/comportamental/reservas",

@@ -94,7 +94,7 @@ function bindNav() {
   $("#logout").onclick = logout;
 }
 
-const TITLES = { dashboard: "Dashboard", monthly: "Extrato mensal", daily: "Gastos diários", fixed: "Despesas fixas", installments: "Parcelas do cartão", incomes: "Receitas", goals: "Metas de gasto", categories: "Categorias", imports: "Importar dados", users: "Usuários" };
+const TITLES = { laudo: "Laudo comportamental", dashboard: "Dashboard", gastos: "Gastos", goals: "Metas de gasto", categories: "Categorias", imports: "Importar dados", users: "Usuários" };
 
 async function go(view) {
   State.view = view;
@@ -316,7 +316,66 @@ function renderPlan(plan) {
 }
 
 /* ----- Extrato mensal ----- */
-VIEWS.monthly = async (host) => {
+/* ----- Laudo — Finanças Comportamentais (estilo do laudo em PDF) ----- */
+const CONF_LABEL = { alta: "CONFIANÇA ALTA", media: "CONFIANÇA MÉDIA", baixa: "CONFIANÇA BAIXA" };
+
+VIEWS.laudo = async (host) => {
+  const y = State.year, m = State.month;
+  const periodo = `${y}-${String(m).padStart(2, "0")}`;
+  const [diag, ov] = await Promise.all([
+    api("/comportamental/diagnosticos", { method: "POST", body: { periodo, persistir: false } }),
+    api(`/dashboard/overview/${y}/${m}`),
+  ]);
+  const k = ov.kpis;
+  const cats = ov.gastos_por_categoria.filter(c => c.amount > 0);
+  const maxCat = Math.max(1, ...cats.map(c => c.amount));
+  const pctParcelas = k.total_gastos > 0 ? k.total_parcelas / k.total_gastos : 0;
+  const ticket = diag.qtd_lancamentos > 0 ? k.total_gastos / diag.qtd_lancamentos : 0;
+
+  host.innerHTML = `
+    <div class="laudo">
+      <div class="laudo-head">
+        <div class="laudo-eyebrow">LAUDO · FINANÇAS COMPORTAMENTAIS</div>
+        <h2>Revisor Comportamental de Gastos</h2>
+        <div class="laudo-meta">Competência ${MONTHS[m - 1]}/${y} · ${diag.qtd_lancamentos} lançamento(s) analisados</div>
+      </div>
+
+      <div class="laudo-kpis">
+        ${laudoTile(brl(k.total_gastos), "Total de gastos")}
+        ${laudoTile(pct(pctParcelas), "Comprometido em parcelas")}
+        ${laudoTile(String(diag.qtd_lancamentos), "Lançamentos")}
+        ${laudoTile(brl(ticket), "Ticket médio")}
+      </div>
+
+      <div class="card">
+        <h3>Para onde foi o dinheiro</h3>
+        ${cats.length ? `<div class="laudo-bars">${cats.map(c => `
+          <div class="lbar"><div class="lbar-name">${esc(c.category)}</div>
+            <div class="lbar-track"><div class="lbar-fill" style="width:${Math.max(4, c.amount / maxCat * 100)}%"></div></div>
+            <div class="lbar-val">${brl(c.amount)} <span class="muted">${pct(k.total_gastos ? c.amount / k.total_gastos : 0)}</span></div>
+          </div>`).join("")}</div>` : '<div class="empty">Sem gastos nesta competência.</div>'}
+      </div>
+
+      <h3 class="laudo-sec">Diagnóstico — principais padrões</h3>
+      ${diag.padroes.length ? diag.padroes.map((p, i) => `
+        <div class="laudo-pattern conf-${p.confianca}">
+          <div class="lp-head"><span class="lp-num">${i + 1}</span><span class="lp-title">${esc(p.titulo)}</span>
+            <span class="conf-badge conf-${p.confianca}">${CONF_LABEL[p.confianca] || p.confianca}</span></div>
+          <p class="lp-ev"><b>Evidência:</b> ${esc(p.evidencia)}</p>
+          <p class="lp-bias"><b>Viés por trás:</b> ${esc(p.vies)}</p>
+          <p class="lp-rec"><b>Recomendação:</b> ${esc(p.recomendacao)}</p>
+        </div>`).join("") : '<div class="card"><div class="empty">Sem padrões relevantes nesta competência. Importe mais dados para um diagnóstico mais forte.</div></div>'}
+
+      ${diag.ressalvas.length ? `<div class="card laudo-caveats"><h3>Ressalvas de honestidade</h3>
+        <ul>${diag.ressalvas.map(r => `<li>${esc(r)}</li>`).join("")}</ul></div>` : ""}
+    </div>`;
+};
+function laudoTile(value, label) {
+  return `<div class="laudo-tile"><div class="lt-val">${value}</div><div class="lt-lbl">${label}</div></div>`;
+}
+
+/* ----- Gastos (tela consolidada: receitas + diários + fixas + parcelas, editável) ----- */
+VIEWS.gastos = async (host) => {
   const y = State.year, m = State.month;
   const [rep, incomes, fixed, daily, insts] = await Promise.all([
     api(`/reports/monthly/${y}/${m}`),
@@ -335,17 +394,19 @@ VIEWS.monthly = async (host) => {
       ${kpi("Projeção economia 12m", brl(rep.projecao_economia_12m))}
     </div>
     <div class="grid-2">
-      <div class="card"><h3>Resumo por categoria</h3><canvas id="cMcat" height="150"></canvas></div>
-      <div class="card"><h3>Plano de ação inteligente</h3>${renderPlan(rep.plano_acao)}</div>
+      <div class="card"><h3>Resumo por categoria</h3><p class="card-sub">Gasto × meta</p><div class="chart-wrap sm"><canvas id="cMcat"></canvas></div></div>
+      <div class="card"><h3>Plano de ação</h3><p class="card-sub">Ajustes priorizados</p>${renderPlan(rep.plano_acao)}</div>
     </div>
 
-    <div class="card" style="margin-top:16px"><h3>Receitas (contra cheque)</h3>${tableIncomes(incomes)}</div>
+    ${crudSection("secIncome", CFG_INCOME, incomes, "💰 Receitas", "Você pode ter várias receitas por mês")}
+    ${crudSection("secDaily", CFG_DAILY, daily, "🧾 Gastos diários", null)}
 
-    <div class="card" style="margin-top:16px"><h3>Despesas fixas</h3>${tableFixed(fixed, y, m)}</div>
+    <div class="card" id="secFixed" style="margin-top:16px">
+      <div class="toolbar"><div><h3>📌 Despesas fixas</h3><p class="card-sub">Pagamento por competência (${MONTHS[m - 1]}/${y})</p></div><button class="btn addOne">+ Nova</button></div>
+      ${tableFixedFull(fixed, y, m)}
+    </div>
 
-    <div class="card" style="margin-top:16px"><h3>Parcelas ativas no mês</h3>${tableInstMonth(insts, y, m)}</div>
-
-    <div class="card" style="margin-top:16px"><h3>Lançamentos diários</h3>${tableDailyShort(daily)}</div>
+    ${crudSection("secInst", CFG_INST, insts, "💳 Parcelas do cartão", "Ativas nesta competência")}
 
     <div class="card" style="margin-top:16px"><h3>Desvios de meta</h3>${tableDeviations(rep.desvios)}</div>`;
 
@@ -362,8 +423,44 @@ VIEWS.monthly = async (host) => {
     options: barYOpts(true),
   });
 
+  bindCrudSection("secIncome", CFG_INCOME, incomes);
+  bindCrudSection("secDaily", CFG_DAILY, daily);
+  bindCrudSection("secInst", CFG_INST, insts);
+  const secFixed = document.getElementById("secFixed");
+  secFixed.querySelector(".addOne").onclick = () => openForm(CFG_FIXED, null);
+  secFixed.querySelectorAll(".editBtn").forEach(b => b.onclick = () => openForm(CFG_FIXED, fixed.find(r => r.id === +b.dataset.id)));
+  secFixed.querySelectorAll(".delBtn").forEach(b => b.onclick = () => delRow(CFG_FIXED, +b.dataset.id));
   bindPayToggles(y, m);
 };
+
+/* Seção CRUD reutilizável dentro da tela consolidada (card + toolbar + tabela) */
+function crudSection(id, cfg, rows, title, sub) {
+  return `<div class="card" id="${id}" style="margin-top:16px">
+    <div class="toolbar"><div><h3>${title}</h3>${sub ? `<p class="card-sub">${sub}</p>` : ""}</div><button class="btn addOne">+ Novo</button></div>
+    ${rows.length ? cfg.table(rows) : '<div class="empty">Nenhum registro nesta competência.</div>'}
+  </div>`;
+}
+function bindCrudSection(id, cfg, rows) {
+  const root = document.getElementById(id);
+  if (!root) return;
+  const add = root.querySelector(".addOne");
+  if (add) add.onclick = () => openForm(cfg, null);
+  root.querySelectorAll(".editBtn").forEach(b => b.onclick = () => openForm(cfg, rows.find(r => r.id === +b.dataset.id)));
+  root.querySelectorAll(".delBtn").forEach(b => b.onclick = () => delRow(cfg, +b.dataset.id));
+}
+/* Tabela de despesas fixas com baixa de pagamento + editar/excluir */
+function tableFixedFull(rows, y, m) {
+  if (!rows.length) return '<div class="empty">Nenhuma despesa fixa cadastrada.</div>';
+  return `<table><thead><tr><th>Descrição</th><th>Categoria</th><th>Venc.</th><th class="num">Valor</th><th>Pagamento</th><th></th></tr></thead><tbody>
+    ${rows.map(r => {
+      const paid = r._pay && r._pay.paid;
+      return `<tr><td>${esc(r.description)}</td><td>${esc(r.category ? r.category.name : catName(r.category_id))}</td>
+        <td>${r.due_day ? "dia " + r.due_day : "—"}</td><td class="num">${brl(r.amount)}</td>
+        <td>${paid ? `<span class="badge ok">Pago${r._pay.paid_date ? " " + fmtDate(r._pay.paid_date) : ""}</span>` : '<span class="badge warn">Pendente</span>'}
+          <button class="btn sm ghost payToggle" data-id="${r.id}" data-paid="${paid ? 1 : 0}">${paid ? "Desmarcar" : "Marcar pago"}</button></td>
+        <td>${actionBtns(r.id)}</td></tr>`;
+    }).join("")}</tbody></table>`;
+}
 
 async function fixedWithPayments(y, m) {
   const list = await api("/fixed-expenses");
@@ -396,7 +493,7 @@ function bindPayToggles(y, m) {
       try {
         await api(`/fixed-expenses/${b.dataset.id}/payments`, { method: "POST", body: { year: y, month: m, paid: !paid, paid_date: !paid ? new Date().toISOString().slice(0, 10) : null } });
         toast(!paid ? "Pagamento registrado" : "Pagamento desmarcado");
-        go("monthly");
+        go(State.view);
       } catch (e) { toast(e.message, true); }
     };
   });
@@ -483,8 +580,8 @@ function fieldHtml(f) {
   return `<label>${f.label}</label><input id="${id}" type="${f.type}" value="${esc(f.value ?? "")}" ${f.step ? `step="${f.step}"` : ""} ${f.min != null ? `min="${f.min}"` : ""}>`;
 }
 
-/* ----- CRUD configs ----- */
-VIEWS.daily = crudView({
+/* ----- CRUD configs (consts p/ reuso na tela consolidada de Gastos) ----- */
+const CFG_DAILY = {
   label: "Gasto diário", endpoint: "/daily-expenses", periodScoped: true,
   table: rows => `<table><thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Forma</th><th class="num">Valor</th><th></th></tr></thead><tbody>
     ${rows.map(r => `<tr><td>${fmtDate(r.expense_date)}</td><td>${esc(r.description)}</td><td>${esc(r.category ? r.category.name : catName(r.category_id))}</td><td>${esc(r.payment_method)}</td><td class="num">${brl(r.amount)}</td>
@@ -496,9 +593,9 @@ VIEWS.daily = crudView({
     { name: "amount", label: "Valor (R$)", type: "number", step: "0.01", min: 0, value: r?.amount },
     { name: "payment_method", label: "Forma de pagamento", type: "select", options: ["debito", "credito", "dinheiro", "pix", "boleto", "outro"].map(x => `<option ${r?.payment_method === x ? "selected" : ""}>${x}</option>`).join("") },
   ],
-});
+};
 
-VIEWS.fixed = crudView({
+const CFG_FIXED = {
   label: "Despesa fixa", endpoint: "/fixed-expenses", periodScoped: false,
   table: rows => `<table><thead><tr><th>Descrição</th><th>Categoria</th><th>Venc.</th><th class="num">Valor</th><th>Ativa</th><th></th></tr></thead><tbody>
     ${rows.map(r => `<tr><td>${esc(r.description)}</td><td>${esc(r.category ? r.category.name : catName(r.category_id))}</td><td>${r.due_day ? "dia " + r.due_day : "—"}</td><td class="num">${brl(r.amount)}</td><td>${r.active ? '<span class="badge ok">sim</span>' : '<span class="badge">não</span>'}</td><td>${actionBtns(r.id)}</td></tr>`).join("")}</tbody></table>`,
@@ -509,9 +606,9 @@ VIEWS.fixed = crudView({
     { name: "due_day", label: "Dia do vencimento", type: "number", min: 1, value: r?.due_day, optional: true },
     { name: "active", label: "Ativa", type: "checkbox", value: r ? r.active : true },
   ],
-});
+};
 
-VIEWS.installments = crudView({
+const CFG_INST = {
   label: "Parcela de cartão", endpoint: "/installments", periodScoped: false,
   table: rows => `<table><thead><tr><th>Descrição</th><th>Cartão</th><th>Início</th><th>Parcelas</th><th class="num">Valor/mês</th><th></th></tr></thead><tbody>
     ${rows.map(r => `<tr><td>${esc(r.description)}</td><td>${esc(r.card || "")}</td><td>${String(r.start_month).padStart(2, "0")}/${r.start_year}</td><td>${r.installments_total}x</td><td class="num">${brl(r.installment_amount)}</td><td>${actionBtns(r.id)}</td></tr>`).join("")}</tbody></table>`,
@@ -524,9 +621,9 @@ VIEWS.installments = crudView({
     { name: "start_year", label: "Ano da 1ª parcela", type: "number", value: r?.start_year ?? State.year },
     { name: "start_month", label: "Mês da 1ª parcela", type: "number", min: 1, value: r?.start_month ?? State.month },
   ],
-});
+};
 
-VIEWS.incomes = crudView({
+const CFG_INCOME = {
   label: "Receita", endpoint: "/incomes", periodScoped: true,
   table: rows => `<table><thead><tr><th>Competência</th><th>Descrição</th><th>Origem</th><th class="num">Bruto</th><th class="num">Líquido</th><th></th></tr></thead><tbody>
     ${rows.map(r => `<tr><td>${String(r.month).padStart(2, "0")}/${r.year}</td><td>${esc(r.description)}</td><td class="muted">${esc(r.source || "")}</td><td class="num">${brl(r.gross_amount)}</td><td class="num">${brl(r.net_amount)}</td><td>${actionBtns(r.id)}</td></tr>`).join("")}</tbody></table>`,
@@ -538,9 +635,9 @@ VIEWS.incomes = crudView({
     { name: "gross_amount", label: "Valor bruto (R$)", type: "number", step: "0.01", min: 0, value: r?.gross_amount },
     { name: "net_amount", label: "Valor líquido (R$)", type: "number", step: "0.01", min: 0, value: r?.net_amount },
   ],
-});
+};
 
-VIEWS.goals = crudView({
+const CFG_GOALS = {
   label: "Meta de gasto", endpoint: "/goals", periodScoped: false,
   table: rows => `<table><thead><tr><th>Categoria</th><th>Competência</th><th class="num">% da renda</th><th class="num">Valor teto</th><th></th></tr></thead><tbody>
     ${rows.map(r => `<tr><td>${esc(r.category ? r.category.name : catName(r.category_id))}</td><td>${r.year ? String(r.month).padStart(2, "0") + "/" + r.year : "padrão"}</td><td class="num">${r.target_rate != null ? pct(r.target_rate) : "—"}</td><td class="num">${r.target_amount != null ? brl(r.target_amount) : "—"}</td><td>${actionBtns(r.id)}</td></tr>`).join("")}</tbody></table>`,
@@ -551,7 +648,7 @@ VIEWS.goals = crudView({
     { name: "target_rate", label: "% da renda líquida (ex.: 0.08 = 8%)", type: "number", step: "0.0001", min: 0, value: r?.target_rate, optional: true },
     { name: "target_amount", label: "Valor teto (R$)", type: "number", step: "0.01", min: 0, value: r?.target_amount, optional: true },
   ],
-});
+};
 
 VIEWS.categories = crudView({
   label: "Categoria", endpoint: "/categories", periodScoped: false,
@@ -567,6 +664,58 @@ VIEWS.categories = crudView({
 function actionBtns(id) {
   return `<button class="btn sm ghost editBtn" data-id="${id}">Editar</button> <button class="btn sm danger delBtn" data-id="${id}">Excluir</button>`;
 }
+
+/* ----- Metas (sugeridas pelo diagnóstico + CRUD) ----- */
+VIEWS.goals = async (host) => {
+  const y = State.year, m = State.month;
+  const periodo = `${y}-${String(m).padStart(2, "0")}`;
+  const [goals, sug] = await Promise.all([
+    api("/goals"),
+    api(`/comportamental/metas-sugeridas/${periodo}`).catch(() => []),
+  ]);
+  const aplicaveis = sug.filter(s => s.category_id != null);
+  host.innerHTML = `
+    <div class="card">
+      <div class="toolbar"><div><h3>Metas sugeridas pelo diagnóstico</h3>
+        <p class="card-sub">Baseadas no gasto de ${MONTHS[m - 1]}/${y} — corte de 20% nas categorias de impulso. Edite o teto e aplique.</p></div>
+        ${aplicaveis.length ? '<button class="btn" id="applyAll">Aplicar todas</button>' : ""}</div>
+      ${aplicaveis.length ? `<table><thead><tr><th>Categoria</th><th class="num">Gasto atual</th><th class="num">Meta atual</th><th class="num">Teto sugerido (R$)</th><th>Motivo</th><th></th></tr></thead><tbody>
+        ${aplicaveis.map(s => `<tr data-cat="${s.category_id}">
+          <td>${esc(s.category)} ${s.impulso ? '<span class="badge warn">impulso</span>' : ""}</td>
+          <td class="num">${brl(s.gasto_atual)}</td>
+          <td class="num">${s.meta_atual != null ? brl(s.meta_atual) : "—"}</td>
+          <td class="num"><input class="sugInput" type="number" step="0.01" min="0" value="${s.sugerido}" style="width:120px;text-align:right"></td>
+          <td class="muted">${esc(s.motivo)}</td>
+          <td><button class="btn sm applyOne">Aplicar</button></td></tr>`).join("")}</tbody></table>`
+        : '<div class="empty">Sem sugestões: cadastre/importe gastos nesta competência para gerar propostas.</div>'}
+    </div>
+
+    ${crudSection("secGoals", CFG_GOALS, goals, "Minhas metas", "Metas por categoria (específicas do mês ou padrão)")}`;
+
+  bindCrudSection("secGoals", CFG_GOALS, goals);
+
+  const applyMeta = async (catId, value) => {
+    const existing = goals.find(g => g.category_id === catId && g.year === 0 && g.month === 0);
+    const body = { category_id: catId, year: 0, month: 0, target_amount: value, target_rate: null };
+    if (existing) await api(`/goals/${existing.id}`, { method: "PUT", body });
+    else await api("/goals", { method: "POST", body });
+  };
+  host.querySelectorAll(".applyOne").forEach(b => b.onclick = async () => {
+    const tr = b.closest("tr");
+    const catId = +tr.dataset.cat;
+    const value = Number(tr.querySelector(".sugInput").value);
+    try { await applyMeta(catId, value); toast("Meta aplicada"); go("goals"); }
+    catch (e) { toast(e.message, true); }
+  });
+  const all = $("#applyAll");
+  if (all) all.onclick = async () => {
+    try {
+      for (const tr of host.querySelectorAll("tr[data-cat]"))
+        await applyMeta(+tr.dataset.cat, Number(tr.querySelector(".sugInput").value));
+      toast("Metas aplicadas"); go("goals");
+    } catch (e) { toast(e.message, true); }
+  };
+};
 
 /* ----- Usuários (admin) ----- */
 VIEWS.users = async (host) => {
@@ -611,13 +760,18 @@ VIEWS.imports = async (host) => {
   host.innerHTML = `
     <div class="grid-2">
       <div class="card"><h3>📥 Importar fatura / extrato (CSV)</h3>
-        <p class="muted">Fatura de cartão (ex.: Nubank <code>date,title,amount</code>) ou extrato de conta. Detecta parcelas automaticamente.</p>
+        <p class="muted">Fatura de cartão (ex.: Nubank <code>date,title,amount</code>) ou extrato de conta.
+        Você pode selecionar <b>vários arquivos</b>. O <b>mês de cada lançamento vem da data no próprio arquivo</b>,
+        então um arquivo pode ter vários meses — ideal para avaliar um ou mais meses de uma vez.</p>
         <form id="fStmt">
-          <div class="row"><div><label>Ano</label><input type="number" id="sy" value="${State.year}"></div>
-          <div><label>Mês</label><input type="number" id="sm" min="1" max="12" value="${State.month}"></div></div>
           <label>Layout</label><select id="sl"><option value="auto">Detectar automaticamente</option><option value="cartao">Fatura de cartão</option><option value="extrato">Extrato de conta</option></select>
           <label style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" id="sci" checked style="width:auto"> Criar parcelas a partir de "Parcela X/Y"</label>
-          <label>Arquivo CSV</label><input type="file" id="sf" accept=".csv,text/csv" required>
+          <label>Arquivos CSV (um ou vários)</label><input type="file" id="sf" accept=".csv,text/csv" multiple required>
+          <details style="margin-top:10px"><summary class="muted" style="cursor:pointer">Opções avançadas</summary>
+            <p class="muted" style="margin:8px 0 4px">Competência de referência (usada só para linhas sem data):</p>
+            <div class="row"><div><label>Ano</label><input type="number" id="sy" value="${State.year}"></div>
+            <div><label>Mês</label><input type="number" id="sm" min="1" max="12" value="${State.month}"></div></div>
+          </details>
           <button class="btn" type="submit" style="margin-top:14px">Importar</button>
         </form>
         <div id="sres" class="muted" style="margin-top:12px"></div>
@@ -643,16 +797,25 @@ VIEWS.imports = async (host) => {
 
   $("#fStmt").onsubmit = async (e) => {
     e.preventDefault();
-    const fd = new FormData();
-    fd.set("year", $("#sy").value); fd.set("month", $("#sm").value);
-    fd.set("layout", $("#sl").value); fd.set("create_installments", $("#sci").checked);
-    fd.set("file", $("#sf").files[0]);
-    try {
-      const r = await api("/imports/statement", { method: "POST", form: fd });
-      $("#sres").innerHTML = `✅ Layout <b>${r.layout}</b> · ${r.lancamentos_criados} lançamento(s), ${r.parcelas_criadas} parcela(s), ${r.ignorados_duplicados} duplicado(s) ignorado(s). Total: <b>${brl(r.total_importado)}</b>.`;
-      State.categories = await api("/categories");
-      toast("Importação concluída");
-    } catch (err) { $("#sres").innerHTML = `<span style="color:var(--red)">${esc(err.message)}</span>`; }
+    const files = Array.from($("#sf").files);
+    if (!files.length) return;
+    $("#sres").innerHTML = `Importando ${files.length} arquivo(s)…`;
+    const out = [];
+    for (const file of files) {
+      const fd = new FormData();
+      fd.set("year", $("#sy").value); fd.set("month", $("#sm").value);
+      fd.set("layout", $("#sl").value); fd.set("create_installments", $("#sci").checked);
+      fd.set("file", file);
+      try {
+        const r = await api("/imports/statement", { method: "POST", form: fd });
+        out.push(`<div>✅ <b>${esc(file.name)}</b> — ${r.lancamentos_criados} lançamento(s), ${r.parcelas_criadas} parcela(s), ${r.ignorados_duplicados} ignorado(s). Meses: <b>${r.competencias.join(", ") || "—"}</b>. Total ${brl(r.total_importado)}.</div>`);
+      } catch (err) {
+        out.push(`<div style="color:var(--red)">✖ ${esc(file.name)}: ${esc(err.message)}</div>`);
+      }
+    }
+    State.categories = await api("/categories");
+    $("#sres").innerHTML = out.join("");
+    toast("Importação concluída");
   };
   $("#fPay").onsubmit = async (e) => {
     e.preventDefault();

@@ -24,11 +24,15 @@ from app.models import (
     PaymentMethod,
     VariableGoal,
 )
+from app.services.budget import compute_month_budget
 
 from . import constants as C
 from . import engine, models
 
 ZERO = Decimal("0")
+
+# Corte sugerido para categorias de consumo por impulso (o laudo recomenda 20–30%).
+_CORTE_IMPULSO = Decimal("0.20")
 
 
 # --------------------------------------------------------------------------- #
@@ -339,3 +343,47 @@ def _carregar_historico(
             engine.ResumoMes(periodo=f"{h_ano:04d}-{h_mes:02d}", ticket_medio_por_categoria=ticket)
         )
     return resumos
+
+
+# --------------------------------------------------------------------------- #
+# Metas sugeridas a partir do diagnóstico (o "proposto pelo prompt de avaliação")
+# --------------------------------------------------------------------------- #
+def sugerir_metas(db: Session, usuario_id: int, periodo: str) -> list[dict]:
+    """Propõe um teto (meta) por categoria a partir do gasto do mês.
+
+    Regra, alinhada às recomendações do laudo: categorias de consumo por impulso
+    ganham um corte sugerido (20%); as demais ficam com teto no patamar atual.
+    O usuário pode editar tudo antes de salvar como VariableGoal.
+    """
+    ano, mes = _ano_mes(periodo)
+    mb = compute_month_budget(db, usuario_id, ano, mes)
+    receita = Decimal(str(mb.receita_liquida or 0))
+
+    sugestoes: list[dict] = []
+    for linha in mb.categorias:
+        gasto = Decimal(str(linha.amount or 0))
+        if gasto <= 0:
+            continue
+        impulso = linha.category in C.CATEGORIAS_IMPULSO
+        if impulso:
+            sugerido = (gasto * (Decimal("1") - _CORTE_IMPULSO)).quantize(Decimal("0.01"))
+            motivo = "Categoria de impulso — corte sugerido de 20%"
+        else:
+            sugerido = gasto.quantize(Decimal("0.01"))
+            motivo = "Teto no patamar atual"
+        target_rate = (
+            (sugerido / receita).quantize(Decimal("0.0001")) if receita > 0 else None
+        )
+        sugestoes.append(
+            {
+                "category_id": linha.category_id,
+                "category": linha.category,
+                "gasto_atual": float(gasto),
+                "meta_atual": linha.target,
+                "sugerido": float(sugerido),
+                "target_rate": float(target_rate) if target_rate is not None else None,
+                "impulso": impulso,
+                "motivo": motivo,
+            }
+        )
+    return sugestoes
