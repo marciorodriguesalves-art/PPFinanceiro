@@ -20,7 +20,22 @@ jobs:
     # No gatilho automático, só segue se o CI passou. No manual, segue sempre.
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
+      # Enquanto os secrets do VPS não existirem, o deploy é ignorado (job verde,
+      # sem erro). Assim que VPS_HOST for cadastrado, passa a deployar de verdade.
+      - name: Verificar se o VPS está configurado
+        id: gate
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          if [ -n "$VPS_HOST" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Secrets do VPS ainda não configurados — deploy ignorado. Veja DEPLOY.md."
+          fi
+
       - name: Deploy no VPS via SSH
+        if: steps.gate.outputs.ready == 'true'
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.VPS_HOST }}
