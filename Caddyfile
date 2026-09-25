@@ -1,0 +1,13 @@
+# Reverse proxy com HTTPS automático (Let's Encrypt).
+# SITE_ADDRESS e ACME_EMAIL vêm do .env.
+#   - Com domínio (ex.: SITE_ADDRESS=orcamento.seudominio.com): TLS automático.
+#   - Só com IP / sem domínio (SITE_ADDRESS=:80): serve em HTTP na porta 80.
+
+{
+	email {$ACME_EMAIL}
+}
+
+{$SITE_ADDRESS} {
+	encode gzip
+	reverse_proxy app:8000
+}

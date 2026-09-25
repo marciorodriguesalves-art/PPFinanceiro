@@ -159,6 +159,21 @@ Regras/convenções específicas:
 
 Endpoints: `POST/GET /api/comportamental/diagnosticos[/{periodo}]`, `GET /api/comportamental/recorrencias/anualizado`, `POST /api/comportamental/recorrencias`, `POST/GET /api/comportamental/reservas`.
 
+## Deploy (produção)
+
+Alvo: **VPS KVM (Hostinger)** com Docker. Stack: **Caddy** (HTTPS automático) → **app**
+(uvicorn) → **PostgreSQL**, em [docker-compose.prod.yml](docker-compose.prod.yml).
+
+- **Não** roda em hospedagem compartilhada (o "Git" do hPanel só serve estático/PHP).
+- Em produção, o container do app roda só `alembic upgrade head` + uvicorn (o seed de
+  demonstração **não** é executado automaticamente). O admin inicial vem de
+  [scripts/create_admin.py](scripts/create_admin.py) (sem dados fictícios).
+- **Auto-deploy:** [.github/workflows/deploy.yml](.github/workflows/deploy.yml) dispara
+  **após o CI passar** na `main` e atualiza o VPS por SSH (`git pull` + `docker compose up`).
+  Segredos do GitHub: `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`, `VPS_PORT`, `VPS_APP_DIR`.
+- Config sensível fica só no `.env` do VPS (modelo em `.env.prod.example`, host do banco = `db`).
+- Passo a passo completo em [DEPLOY.md](DEPLOY.md).
+
 ## Testes & CI
 
 - `tests/conftest.py` usa **SQLite in-memory** por padrão (rápido). Se `TEST_DATABASE_URL` estiver definido, os testes rodam nesse banco.

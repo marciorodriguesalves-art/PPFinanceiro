@@ -1,0 +1,35 @@
+name: Deploy
+
+# Dispara DEPOIS que o workflow "CI" termina com sucesso na branch main.
+# Assim só publica código que passou no ruff + pytest. Também dá para
+# disparar manualmente na aba Actions (workflow_dispatch).
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # No gatilho automático, só segue se o CI passou. No manual, segue sempre.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: Deploy no VPS via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          script: |
+            set -e
+            cd ${{ secrets.VPS_APP_DIR }}
+            git pull --ff-only origin main
+            docker compose -f docker-compose.prod.yml up -d --build
+            docker image prune -f
