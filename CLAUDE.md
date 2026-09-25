@@ -161,18 +161,20 @@ Endpoints: `POST/GET /api/comportamental/diagnosticos[/{periodo}]`, `GET /api/co
 
 ## Deploy (produção)
 
-Alvo: **VPS KVM (Hostinger)** com Docker. Stack: **Caddy** (HTTPS automático) → **app**
-(uvicorn) → **PostgreSQL**, em [docker-compose.prod.yml](docker-compose.prod.yml).
+**Alvo principal: Railway** (PaaS) — PostgreSQL gerenciado, HTTPS e deploy no push.
+Config em [railway.json](railway.json); guia em [RAILWAY.md](RAILWAY.md). No boot o app
+roda `alembic upgrade head` + `scripts.create_admin` + uvicorn na `$PORT` (sem seed de
+demonstração). A `DATABASE_URL` chega como `postgresql://…` e é normalizada para o driver
+`postgresql+psycopg://` em [app/config.py](app/config.py) (`_use_psycopg_driver`).
+
+**Alternativa: VPS com Docker** (ex.: Hostinger KVM) — [docker-compose.prod.yml](docker-compose.prod.yml)
+(Caddy + app + Postgres) e [DEPLOY.md](DEPLOY.md). Auto-deploy por
+[.github/workflows/deploy.yml](.github/workflows/deploy.yml) (SSH; dispara após o CI passar,
+e fica inofensivo enquanto os secrets `VPS_*` não existirem).
 
 - **Não** roda em hospedagem compartilhada (o "Git" do hPanel só serve estático/PHP).
-- Em produção, o container do app roda só `alembic upgrade head` + uvicorn (o seed de
-  demonstração **não** é executado automaticamente). O admin inicial vem de
-  [scripts/create_admin.py](scripts/create_admin.py) (sem dados fictícios).
-- **Auto-deploy:** [.github/workflows/deploy.yml](.github/workflows/deploy.yml) dispara
-  **após o CI passar** na `main` e atualiza o VPS por SSH (`git pull` + `docker compose up`).
-  Segredos do GitHub: `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`, `VPS_PORT`, `VPS_APP_DIR`.
-- Config sensível fica só no `.env` do VPS (modelo em `.env.prod.example`, host do banco = `db`).
-- Passo a passo completo em [DEPLOY.md](DEPLOY.md).
+- Admin inicial: [scripts/create_admin.py](scripts/create_admin.py) (idempotente, sem dados fictícios).
+- Config sensível nunca vai ao Git (`.env`); modelos em `.env.example` / `.env.prod.example`.
 
 ## Testes & CI
 
