@@ -1,4 +1,4 @@
-.PHONY: install dev db-up db-down migrate seed run test lint fmt
+.PHONY: install dev db-up db-down migrate seed simulate run test lint fmt
 
 install:
 	pip install -e ".[dev]"
@@ -25,6 +25,10 @@ migrate:
 
 seed:
 	python -m scripts.seed
+
+# Simulação de 1 ano realista (2025 baseline + 2026 com meses de pico) no admin.
+simulate:
+	DATABASE_URL="$(DEV_DB)" python -m scripts.simulate
 
 run:
 	uvicorn app.main:app --reload

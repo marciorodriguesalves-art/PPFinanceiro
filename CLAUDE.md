@@ -29,7 +29,8 @@ docker compose up -d db         # sobe o PostgreSQL local (localhost:5432)
 # Banco
 alembic upgrade head            # aplica as migrations
 alembic revision --autogenerate -m "mensagem"   # cria migration a partir dos modelos
-python -m scripts.seed          # dados iniciais + cenário de demonstração
+python -m scripts.seed          # dados iniciais + cenário de demonstração (1 mês)
+python -m scripts.simulate      # simulação realista de 1 ano (2025 baseline + 2026 com picos)
 
 # Rodar
 uvicorn app.main:app --reload   # http://localhost:8000  (Swagger em /docs)
