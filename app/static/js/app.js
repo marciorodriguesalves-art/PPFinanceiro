@@ -7,6 +7,7 @@ const State = {
   year: new Date().getFullYear(),
   month: new Date().getMonth() + 1,
   view: "dashboard",
+  dashScope: "mes",   // "mes" | "ano" — escopo de avaliação do Dashboard
   categories: [],
   charts: {},
 };
@@ -134,13 +135,16 @@ const TREND_METRICS = {
 };
 
 VIEWS.dashboard = async (host) => {
+  const anual = State.dashScope === "ano";
+  const m = State.month;
   const [ov, serCY, serPY] = await Promise.all([
-    api(`/dashboard/overview/${State.year}/${State.month}`),
+    anual ? api(`/dashboard/overview-annual/${State.year}`)
+          : api(`/dashboard/overview/${State.year}/${m}`),
     api(`/dashboard/series/${State.year}`),
     api(`/dashboard/series/${State.year - 1}`).catch(() => ({ pontos: [] })),
   ]);
   const k = ov.kpis;
-  const m = State.month;
+  $("#viewSub").textContent = anual ? `Ano ${State.year}` : `Competência ${MONTHS[m - 1]}/${State.year}`;
   // ponto do mês atual e do mês anterior (Dez do ano anterior quando m === 1)
   const cur = serCY.pontos[m - 1] || {};
   const prev = m >= 2 ? serCY.pontos[m - 2] : (serPY.pontos[11] || null);
@@ -148,8 +152,24 @@ VIEWS.dashboard = async (host) => {
   const invBadge = k.atende_meta_investimento ? '<span class="badge ok">Meta atingida</span>' : '<span class="badge bad">Abaixo da meta</span>';
   const invPctMeta = k.investimento_meta > 0 ? k.investimento_previsto / k.investimento_meta - 1 : null;
 
-  host.innerHTML = `
-    <div class="kpi-grid">
+  const scopeToggle = `<div class="dash-scope">
+    <span class="muted">Avaliar por:</span>
+    <div class="seg" id="scopeSeg">
+      <button data-scope="mes" class="${anual ? "" : "active"}">Mês</button>
+      <button data-scope="ano" class="${anual ? "active" : ""}">Ano</button>
+    </div>
+    ${anual ? `<span class="muted">${ov.meses_com_dados} mês(es) com dados em ${State.year}</span>` : ""}
+  </div>`;
+
+  const kpiCards = anual ? `
+      ${kpiCard("Receita líquida (ano)", brl(k.receita_liquida), { accent: "accent", sub: "soma do ano" })}
+      ${kpiCard("Gastos (ano)", brl(k.total_gastos), {
+        deltas: [`<span class="delta"><span class="cap">${pct(k.taxa_comprometimento)} da renda</span></span>`] })}
+      ${kpiCard("Saldo do ano", brl(k.saldo_disponivel), { accent: k.saldo_disponivel >= 0 ? "good" : "bad",
+        valueCls: k.saldo_disponivel >= 0 ? "pos" : "neg", sub: "receita − gastos no ano" })}
+      ${kpiCard("Investimento previsto (ano)", brl(k.investimento_previsto), { accent: k.atende_meta_investimento ? "good" : "bad",
+        valueCls: k.atende_meta_investimento ? "pos" : "neg", sub: `Meta ${brl(k.investimento_meta)} ${invBadge}` })}
+    ` : `
       ${kpiCard("Receita líquida", brl(k.receita_liquida), { accent: "accent",
         deltas: [deltaChip("vs mês ant.", cur.receita, prev && prev.receita, "up")] })}
       ${kpiCard("Gastos do mês", brl(k.total_gastos), {
@@ -161,6 +181,23 @@ VIEWS.dashboard = async (host) => {
       ${kpiCard("Investimento previsto", brl(k.investimento_previsto), { accent: k.atende_meta_investimento ? "good" : "bad",
         valueCls: k.atende_meta_investimento ? "pos" : "neg",
         deltas: [deltaPct("vs meta", invPctMeta, "up")], sub: `Meta ${brl(k.investimento_meta)} ${invBadge}` })}
+    `;
+
+  const lastCard = anual ? `
+      <div class="card"><h3>Resumo do ano</h3><p class="card-sub">Totais de ${State.year}</p>
+        <div class="stat-row" style="grid-template-columns:1fr 1fr;margin-top:12px">
+          ${statTile("Receita total", brl(k.receita_liquida))}
+          ${statTile("Gastos totais", brl(k.total_gastos))}
+          ${statTile("Saldo do ano", brl(k.saldo_disponivel))}
+          ${statTile("Investido previsto", brl(k.investimento_previsto))}
+        </div>
+      </div>`
+    : `<div class="card"><h3>Plano de ação</h3><p class="card-sub">Ajustes priorizados</p><div id="planBox"></div></div>`;
+
+  host.innerHTML = `
+    ${scopeToggle}
+    <div class="kpi-grid">
+      ${kpiCards}
     </div>
 
     <div class="grid-3">
@@ -207,8 +244,14 @@ VIEWS.dashboard = async (host) => {
         </div>
         <div class="chart-wrap"><canvas id="cCat" height="240"></canvas></div>
       </div>
-      <div class="card"><h3>Plano de ação</h3><p class="card-sub">Ajustes priorizados</p><div id="planBox"></div></div>
+      ${lastCard}
     </div>`;
+
+  // ---- Alternância Mês / Ano ----
+  $("#scopeSeg").querySelectorAll("button").forEach(b => b.onclick = () => {
+    State.dashScope = b.dataset.scope;
+    go("dashboard");
+  });
 
   // ---- Trend CY vs PY (com toggle de métrica) ----
   const labels = MONTHS;
@@ -266,7 +309,7 @@ VIEWS.dashboard = async (host) => {
     options: optCat,
   });
 
-  $("#planBox").innerHTML = renderPlan(ov.plano_acao);
+  if (!anual) $("#planBox").innerHTML = renderPlan(ov.plano_acao);
 };
 
 /* wrapper simples usado por outras telas (ex.: Extrato mensal) */

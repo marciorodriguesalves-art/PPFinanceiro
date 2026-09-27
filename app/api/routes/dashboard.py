@@ -42,6 +42,85 @@ def overview(
     }
 
 
+@router.get("/overview-annual/{year}")
+def overview_annual(
+    year: int = Y,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Agregado do ANO inteiro (soma dos 12 meses) — mesmo formato do overview
+    mensal, para o Dashboard avaliar o ano. Meses sem dados somam zero, então
+    funciona mesmo com poucos meses lançados."""
+    tot = dict.fromkeys(
+        ("receita_liquida", "receita_bruta", "total_gastos", "total_fixos",
+         "total_variaveis", "total_parcelas", "saldo_disponivel",
+         "investimento_meta", "investimento_previsto"), 0.0,
+    )
+    cat_amount: dict = {}
+    cat_target: dict = {}
+    cat_name: dict = {}
+    meses_com_dados = 0
+    for m in range(1, 13):
+        mb = compute_month_budget(db, current.id, year, m)
+        if mb.total_gastos > 0 or mb.receita_liquida > 0:
+            meses_com_dados += 1
+        tot["receita_liquida"] += mb.receita_liquida
+        tot["receita_bruta"] += mb.receita_bruta
+        tot["total_gastos"] += mb.total_gastos
+        tot["total_fixos"] += mb.total_fixos
+        tot["total_variaveis"] += mb.total_variaveis
+        tot["total_parcelas"] += mb.total_parcelas
+        tot["saldo_disponivel"] += mb.saldo_disponivel
+        tot["investimento_meta"] += mb.investimento_meta
+        tot["investimento_previsto"] += mb.investimento_previsto
+        for c in mb.categorias:
+            cat_amount[c.category_id] = cat_amount.get(c.category_id, 0.0) + c.amount
+            cat_name[c.category_id] = c.category
+            if c.target is not None:
+                cat_target[c.category_id] = cat_target.get(c.category_id, 0.0) + c.target
+
+    receita = tot["receita_liquida"]
+    kpis = {
+        **{k: round(v, 2) for k, v in tot.items()},
+        "taxa_comprometimento": round(tot["total_gastos"] / receita, 4) if receita > 0 else 0.0,
+        "taxa_investimento_prevista": (
+            round(tot["investimento_previsto"] / receita, 4) if receita > 0 else 0.0
+        ),
+        "atende_meta_investimento": (
+            tot["investimento_previsto"] >= tot["investimento_meta"]
+            and tot["saldo_disponivel"] >= 0
+        ),
+    }
+
+    categorias = []
+    for cid, amount in cat_amount.items():
+        target = cat_target.get(cid)
+        deviation = round(amount - target, 2) if target is not None else None
+        categorias.append({
+            "category_id": cid,
+            "category": cat_name[cid],
+            "amount": round(amount, 2),
+            "target": round(target, 2) if target is not None else None,
+            "deviation": deviation,
+            "deviation_rate": round(deviation / target, 4) if target else None,
+        })
+    categorias.sort(key=lambda c: c["amount"], reverse=True)
+
+    composicao = [
+        {"label": "Despesas fixas", "value": round(tot["total_fixos"], 2)},
+        {"label": "Gastos variáveis", "value": round(tot["total_variaveis"], 2)},
+        {"label": "Parcelas cartão", "value": round(tot["total_parcelas"], 2)},
+    ]
+    return {
+        "competencia": str(year),
+        "meses_com_dados": meses_com_dados,
+        "kpis": kpis,
+        "composicao": composicao,
+        "gastos_por_categoria": categorias,
+        "desvios": [c for c in categorias if (c["deviation"] or 0) > 0],
+    }
+
+
 @router.get("/series/{year}")
 def series(
     year: int = Y,

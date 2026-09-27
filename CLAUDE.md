@@ -166,8 +166,10 @@ SPA vanilla JS + Chart.js. Telas (nav em [templates/index.html](app/templates/in
 - **Laudo comportamental** (primeiro item, acima do Dashboard) — `VIEWS.laudo`: renderiza o
   diagnóstico do motor comportamental no estilo do laudo em PDF (tiles, "para onde foi o
   dinheiro", padrões com selo de confiança, ressalvas).
-- **Dashboard** — KPIs com variação, tendência CY×PY, donut de composição e **Resumo por
-  categoria** (gasto × meta; barra em vermelho quando estoura o teto).
+- **Dashboard** — alterna **Mês / Ano** (`State.dashScope`): por mês usa `/dashboard/overview`
+  (com variação vs mês anterior); por ano usa `/dashboard/overview-annual/{year}` (soma dos
+  12 meses, funciona mesmo com poucos meses). Tendência CY×PY, donut de composição e **Resumo
+  por categoria** (gasto × meta; barra em vermelho quando estoura o teto).
 - **Gastos** — `VIEWS.gastos`: KPIs + **Gastos diários, Despesas fixas e Parcelas lado a
   lado** (`.grid-3col`) + Plano de ação + Desvios. Cada seção tem "+ Novo" que abre o form
   (`openForm`) e volta para cá ao salvar. Configs CRUD são consts (`CFG_DAILY`, `CFG_FIXED`,
