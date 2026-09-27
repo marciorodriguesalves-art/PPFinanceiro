@@ -149,6 +149,7 @@ button { font-family: inherit; cursor: pointer; }
 /* Três colunas lado a lado (Gastos: diários | fixas | parcelas) */
 .grid-3col { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; align-items: start; }
 .gasto-col { min-width: 0; }
+.gasto-stack { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .gasto-col h3 { font-size: 14px; }
 .tscroll { overflow-x: auto; }
 .tscroll table { font-size: 12px; }
